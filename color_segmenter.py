@@ -135,10 +135,6 @@ def run(js):
     while True:
         # Get an image from the camera
         _, image = capture.read()
-
-        # Mirror image
-        if mirror_on:
-            image = mirror_img(image)
         
         # Do image full screen
         image, _, _ = resize_window(window, image)
@@ -155,6 +151,10 @@ def run(js):
 
         alpha = 0.8  # Transparency level for blending
         image = cv2.addWeighted(image, 1 - alpha, masked_region, alpha, 0)
+
+        # Mirror image
+        if mirror_on:
+            image = mirror_img(image)
 
         # Show frame
         cv2.imshow(window, image)            
