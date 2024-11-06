@@ -66,22 +66,6 @@ def mirror_img(image):
     # Flip the image horizontally (mirror effect)
     return cv2.flip(image, 1)
 
-def resize_window(window_handel, image):
-        _, _, screen_width, screen_height = cv2.getWindowImageRect(window_handel)
-
-        # Resize the image to fit the screen while keeping the aspect ratio
-        height, width = image.shape[:2]
-        scale_width = screen_width / width
-        scale_height = screen_height / height
-        scale = min(scale_width, scale_height) * 2  # Keep aspect ratio
-
-        # Calculate new dimensions
-        new_width = int(width * scale)
-        new_height = int(height * scale)
-        image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_LINEAR)
-
-        return image, new_width, new_height
-
 def quit():
     print("\nGoodbye!")
     sys.exit(0)
@@ -108,43 +92,105 @@ def setup_arg():
 
     return arg
 
+def draw_circle(image, mask):
+    global radius, color
+
+    area = cv2.countNonZero(mask)
+    if area > 1000:
+        M = cv2.moments(mask) # Calculate moments of the binary image
+        if M["m00"] != 0:
+            cX = int(M["m10"] / M["m00"])
+            cY = int(M["m01"] / M["m00"])
+            center_coordinates = (cX, cY)
+            cv2.circle(image, center_coordinates, radius, color, -1)
+
+            return image, True, cX, cY
+    
+    return image, False, None, None
+
+def get_mask(hsv_min, hsv_max, image):
+    hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    hsv_image_blur = cv2.medianBlur(hsv_image, 5)
+    # hsv_image_blur = cv2.blur(hsv_image_blur, (5, 5))
+
+    mask = cv2.inRange(hsv_image_blur, hsv_min, hsv_max)
+
+
+    masked_region = cv2.bitwise_and(hsv_image, hsv_image, mask=mask)
+    hsv_image = cv2.addWeighted(hsv_image, 1, masked_region, 1, 0)
+    image = cv2.cvtColor(hsv_image, cv2.COLOR_HSV2BGR)
+
+    return image, mask
+
+def change_color(chr):
+
+    if chr == 'r':
+        return (0, 0, 255)
+    elif chr == 'g':
+        return (0, 255, 0)
+    elif chr == 'b':
+        return (255, 0, 0)
+
+def change_size(chr, radius):
+    if chr == '-':
+        return radius -1
+    elif chr == '+':
+        return radius +1
+
 def run(arg):
+    global radius, color
+
     js = JsonHandler(os.path.join(os.getcwd(), arg.json))
     hsv_min, hsv_max = js.get_hsv_min_max(js.read())
     
     mirror_on = True
+    draw = False
+    ix, iy = -1, -1
+
+    radius = 10
+    color = (0, 255, 0)
 
     # Initial setup
     capture = cv2.VideoCapture(0)
     window = 'window'
 
     # Create the window
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    cv2.namedWindow(window, cv2.WINDOW_FULLSCREEN)
     cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-    # Show acquired image
+    # Create a blank canvas for drawing
+    ret, frame = capture.read()
+    canvas = np.zeros_like(frame)
+
     while True:
+
         # Get an image from the camera
-        _, image = capture.read()
-        hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-        
-        # Do image full screen
-        hsv_image, _, _ = resize_window(window, hsv_image)
-        
-        # Create a mask using the defined color range
-        mask = cv2.inRange(hsv_image, hsv_min, hsv_max)
-
-        masked_region = cv2.bitwise_and(hsv_image, hsv_image, mask=mask)
-
-        alpha = 0.8  # Transparency level for blending
-        image = cv2.addWeighted(hsv_image, 1 - alpha, masked_region, alpha, 0)
+        ret, image = capture.read()
+        if not ret:
+            break
 
         # Mirror image
         if mirror_on:
             image = mirror_img(image)
+        
+        image, mask = get_mask(hsv_min, hsv_max, image)
 
+        image, state, x, y = draw_circle(image, mask)
+
+        if state and draw:
+            # Draw a line from the last position to the current position
+            cv2.line(canvas, (ix, iy), (x, y), color, radius*2)
+            ix, iy = x, y  # Update the last position
+        elif state:
+            ix, iy = x, y
+            draw = True
+        else:
+            draw = False
+
+        image = cv2.addWeighted(image, 0.8, canvas, 1, 0)
+        
         # Show frame
-        cv2.imshow(window, image)            
+        cv2.imshow(window, image)
 
         key = cv2.waitKey(1) & 0xFF
         if key == 27 or key == ord('q'):  # ESC or q key to exit
@@ -152,7 +198,11 @@ def run(arg):
         elif key == ord('m'):
             mirror_on = False if mirror_on else True
         elif key == ord('r') or key == ord('g') or key == ord('b'):
-            print(chr(key))
+            color = change_color(chr(key))
+        elif key == ord('-') or key == ord('+'):
+            radius = change_size(chr(key), radius)
+        elif key == ord('c'):
+            canvas = np.zeros_like(frame)
 
     capture.release()
     cv2.destroyAllWindows()
