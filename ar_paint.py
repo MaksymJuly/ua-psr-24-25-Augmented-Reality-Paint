@@ -6,6 +6,9 @@ import os
 import sys
 from colorama import Fore, Style, init
 import argparse
+import color_segmenter
+import time
+from datetime import datetime
 
 class JsonHandler:
     def __init__(self, filename):
@@ -133,22 +136,41 @@ def change_color(chr):
 
 def change_size(chr, radius):
     if chr == '-':
-        return radius -1
+        radius -= 1 if radius >= 2 else 1
     elif chr == '+':
-        return radius +1
+        radius += 1
+    
+    return radius
+
+def save_pic(image):
+    formatted_time = datetime.now().strftime("%a_%b_%d_%H:%M:%S_%Y")
+    name = 'drawing_'+formatted_time+'.png'
+    
+    cv2.imwrite(os.path.join(os.getcwd(), 'drawings', name), image)
+
+    start_time = time.time()
+    message = f"Picture {name} is saved."
+
+    return start_time, message
 
 def run(arg):
     global radius, color
+
+    radius = 5
+    color = (0, 255, 0)
 
     js = JsonHandler(os.path.join(os.getcwd(), arg.json))
     hsv_min, hsv_max = js.get_hsv_min_max(js.read())
     
     mirror_on = True
+
+    state = False
     draw = False
     ix, iy = -1, -1
 
-    radius = 10
-    color = (0, 255, 0)
+    message = f"Picture ({None}) is saved."
+    pic_saved = False
+    font = cv2.FONT_HERSHEY_SIMPLEX
 
     # Initial setup
     capture = cv2.VideoCapture(0)
@@ -170,8 +192,7 @@ def run(arg):
             break
 
         # Mirror image
-        if mirror_on:
-            image = mirror_img(image)
+        image = mirror_img(image) if mirror_on else image
         
         image, mask = get_mask(hsv_min, hsv_max, image)
 
@@ -187,27 +208,39 @@ def run(arg):
         else:
             draw = False
 
-        image = cv2.addWeighted(image, 0.8, canvas, 1, 0)
-        
+        image = cv2.addWeighted(image, 1, canvas, 1, 0)
+
+        if pic_saved:
+            if time.time() - start_time > 3:
+                pic_saved = False
+            else:
+                cv2.putText(image, message, (12, 32), font, 0.5, (0,0,0), 1, cv2.LINE_AA)
+                cv2.putText(image, message, (10, 30), font, 0.5, (100,255,255), 1, cv2.LINE_AA)
+            
         # Show frame
         cv2.imshow(window, image)
 
         key = cv2.waitKey(1) & 0xFF
         if key == 27 or key == ord('q'):  # ESC or q key to exit
             break
-        elif key == ord('m'):
+        elif key == ord('m'): # m key to toggle image mirroring
             mirror_on = False if mirror_on else True
-        elif key == ord('r') or key == ord('g') or key == ord('b'):
+        elif key == ord('r') or key == ord('g') or key == ord('b'): # r g b keys to change color
             color = change_color(chr(key))
-        elif key == ord('-') or key == ord('+'):
+        elif key == ord('-') or key == ord('+'): # - or + to change brush size
             radius = change_size(chr(key), radius)
-        elif key == ord('c'):
+        elif key == ord('c'): # c key to clear canvas
             canvas = np.zeros_like(frame)
+        elif key == ord('w'):
+            if pic_saved == False:
+                pic_saved = True
+                start_time, message = save_pic(canvas)
 
     capture.release()
     cv2.destroyAllWindows()
 
 def main():
+    color_segmenter.main()
 
     init()
 
