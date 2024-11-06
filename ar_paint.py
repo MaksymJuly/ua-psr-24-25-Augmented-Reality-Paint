@@ -3,10 +3,9 @@ import cv2
 import numpy as np
 import json
 import os
+import sys
 from colorama import Fore, Style, init
 import argparse
-
-init()
 
 class JsonHandler:
     def __init__(self, filename):
@@ -83,6 +82,10 @@ def resize_window(window_handel, image):
 
         return image, new_width, new_height
 
+def quit():
+    print("\nGoodbye!")
+    sys.exit(0)
+
 def setup_arg():
     os.system('clear')
     parser = argparse.ArgumentParser(description=f'Definition of {Fore.BLUE}test{Style.RESET_ALL} mode',
@@ -93,51 +96,22 @@ def setup_arg():
                         help=f'show this {Fore.BLUE}help{Style.RESET_ALL} message and {Fore.BLUE}exit{Style.RESET_ALL}')
 
     # Game mode options
-    parser.add_argument('-utm', '--use_time_mode',
-                        metavar=Fore.LIGHTBLACK_EX +'TIME_IN_SEC'+ Style.RESET_ALL,
-                        type=int,
-                        default=0,
-                        help=f'Use this argument for {Fore.GREEN}time mode{Style.RESET_ALL} challange.')
-    
-    parser.add_argument('-uim', '--use_input_mode',
-                        metavar=Fore.LIGHTBLACK_EX +'NUM_OF_INPUTS'+ Style.RESET_ALL,
-                        type=int,
-                        default=0,
-                        help=f'Use this argument for {Fore.GREEN}input mode{Style.RESET_ALL} challange.')
-    
-    parser.add_argument('-uw', '--use_words',
-                        metavar= Fore.LIGHTBLACK_EX +'"words"'+ Style.RESET_ALL,
-                        choices='words',
-                        default='letters',
-                        help=f'Use this argument for {Fore.GREEN}random words{Style.RESET_ALL} typing challange.')
+    parser.add_argument('-j', '--json',
+                        metavar=Fore.LIGHTBLACK_EX +'JSON'+ Style.RESET_ALL,
+                        type=str,
+                        default=os.path.join(os.getcwd(), 'limits.json'),
+                        help=f'Name of the {Fore.GREEN}json{Style.RESET_ALL} file with .json'
+                        # help=f'Full path to {Fore.GREEN}json{Style.RESET_ALL} file'
+                        )
     
     arg = parser.parse_args()
 
-    arg.use_time_mode = abs(arg.use_time_mode)
-    arg.use_input_mode = abs(arg.use_input_mode)
-
-    # Vanila mode [-uim: letters-10, words-5]
-    if arg.use_time_mode == 0 and arg.use_input_mode == 0:
-        arg.use_input_mode = 10 if arg.use_words == 'letters' else 5
-    
-    if arg.use_input_mode != 0:
-        arg.mode = 'Input-based'
-        arg.lim = arg.use_input_mode
-    else:
-        arg.mode = 'Time-based'
-        arg.lim = arg.use_time_mode
-
-    print(f'\n{Fore.YELLOW}Starting {arg.mode} Typing Game!{Fore.RESET}')
-    print(f'Input Type: {arg.use_words.capitalize()}')
-    lim_inf = 'inputs' if arg.mode == 'Input-based' else 'seconds'
-    print(f'Limit: {arg.lim} {lim_inf}')
-
-    input(Fore.CYAN + "Press Enter to begin..." + Fore.RESET)
-    print('\n')
-
     return arg
 
-def run(js):
+def run(arg):
+    js = JsonHandler(os.path.join(os.getcwd(), arg.json))
+    hsv_min, hsv_max = js.get_hsv_min_max(js.read())
+    
     mirror_on = True
 
     # Initial setup
@@ -155,15 +129,15 @@ def run(js):
         hsv_image = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
         
         # Do image full screen
-        image, _, _ = resize_window(window, image)
+        hsv_image, _, _ = resize_window(window, hsv_image)
         
-        # # Create a mask using the defined color range
-        # mask = cv2.inRange(hsv_image, hsv_min, hsv_max)
+        # Create a mask using the defined color range
+        mask = cv2.inRange(hsv_image, hsv_min, hsv_max)
 
-        # masked_region = cv2.bitwise_and(image, image, mask=mask)
+        masked_region = cv2.bitwise_and(hsv_image, hsv_image, mask=mask)
 
-        # alpha = 0.8  # Transparency level for blending
-        # image = cv2.addWeighted(image, 1 - alpha, masked_region, alpha, 0)
+        alpha = 0.8  # Transparency level for blending
+        image = cv2.addWeighted(hsv_image, 1 - alpha, masked_region, alpha, 0)
 
         # Mirror image
         if mirror_on:
@@ -177,16 +151,19 @@ def run(js):
             break
         elif key == ord('m'):
             mirror_on = False if mirror_on else True
+        elif key == ord('r') or key == ord('g') or key == ord('b'):
+            print(chr(key))
 
     capture.release()
     cv2.destroyAllWindows()
 
 def main():
-    js = JsonHandler(os.path.join(os.getcwd(), 'limits.json'))
 
-    run(js, setup_arg())
+    init()
 
-    print('\n Bye!')
+    run(setup_arg())
+
+    print('\nBye!')
 
 if __name__ == '__main__':
     main()
